@@ -1,4 +1,29 @@
-# Getting Started with Create React App
+# Albums Frontend
+
+## API configuration
+
+The frontend does not contain API credentials or backend code. Copy
+`.env.example` to `.env.local` and set `REACT_APP_API_URL` to your API URL:
+
+```text
+REACT_APP_API_URL=https://your-api.example.com
+```
+
+Use HTTPS for deployed environments. `.env.local` is ignored by git and must
+never contain values committed to the repository. The API is expected to
+provide these routes and enforce authentication and authorization server-side:
+
+- `POST /login`
+- `POST /albums`
+- `PATCH /user/:userId`
+- `DELETE /albums`
+- `DELETE /albums/:albumId`
+- `DELETE /user/:userId`
+
+The browser sends session cookies with requests. Configure the API cookies with
+`HttpOnly`, `Secure`, and an appropriate `SameSite` policy, and validate the
+authenticated user from the session rather than trusting IDs from request
+bodies or URLs.
 
 This project was bootstrapped with [Create React App](https://github.com/facebook/create-react-app).
 

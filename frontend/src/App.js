@@ -1,7 +1,29 @@
-
-
-
 import React, { useState } from "react";
+
+const API_BASE_URL = (process.env.REACT_APP_API_URL || "").replace(/\/$/, "");
+
+if (
+  process.env.NODE_ENV === "production" &&
+  API_BASE_URL &&
+  !API_BASE_URL.startsWith("https://")
+) {
+  throw new Error("REACT_APP_API_URL must use HTTPS in production");
+}
+
+const apiUrl = (path) => `${API_BASE_URL}${path}`;
+
+const parseResponse = async (response) => {
+  const contentType = response.headers.get("content-type") || "";
+  const data = contentType.includes("application/json")
+    ? await response.json()
+    : null;
+
+  if (!response.ok) {
+    throw new Error(data?.message || "Error: server error - please try again");
+  }
+
+  return data;
+};
 
 const App = () => {
   const [band, setBand] = useState("");
@@ -14,7 +36,12 @@ const App = () => {
   // const [albumToBeUpdated, setAlbumToBeUpdated] = useState({});
   // Note: currentUser is an object with "username" property
   // Later we may add extra properties!
-  const [currentUser, setCurrentUser] = useState({ _id: "", username: "", albums: [], token: "" });
+  const [currentUser, setCurrentUser] = useState({
+    _id: "",
+    username: "",
+    albums: [],
+    token: "",
+  });
   // Use these state variables to control the value of the login inputs
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
@@ -63,7 +90,7 @@ const App = () => {
       _id: currentUser._id,
       band: band,
       title: title,
-      year: year
+      year: year,
     };
 
     // "Translate" the object into a JSON string
@@ -80,38 +107,20 @@ const App = () => {
       },
       // "credentials" - controls what the browser does with cookies
       // "include" means cookies will be included in both same- and cross-origin requests
-      credentials: "include"
+      credentials: "include",
     };
 
     // Make a post request to our server, including the new data in req.body
-    fetch("http://localhost:3001/albums", settings)
-      .then(response => {
-        if (response.ok) {
-          return response.json();
-          // If the request was not successful, throw an error and go to the "catch" block
-        } else {
-          // Throw an error with an appropriate message depending on the status code of the error received in the server response
-          switch (response.status) {
-            case 401:
-              // throw new Error("Error: authorization error - please try again")
-              return response.json().then(err => {
-                throw new Error(err.message);
-              })
-            case 403:
-              throw new Error("Error: validation error - please check the album details and try again");
-            default:
-              throw new Error("Error: server error - please try again");
-          }
-        }
-      })
+    fetch(apiUrl("/albums"), settings)
+      .then(parseResponse)
       // Receive the _id of the new album from the backend
       .then((data) => {
         // * Make a second fetch request to assign the new album to the current user's "albums" array
         // Define the body of the second fetch request
         // It will have 1 property - the _id of the album we just created in the "albums" collection
         const update = {
-          albumId: data
-        }
+          albumId: data,
+        };
 
         // Turn the "update" object into a JSON string to send to the backend
         const jsonUpdate = JSON.stringify(update);
@@ -120,33 +129,19 @@ const App = () => {
           method: "PATCH",
           body: jsonUpdate,
           headers: {
-            "Content-Type": "application/json"
-          }
-        }
+            "Content-Type": "application/json",
+          },
+          credentials: "include",
+        };
 
         // Now make a second fetch request to add the latest album to the "albums" array of the current user
         // We will send 2x useful data...
         // The _id of the new album will go in the request BODY
         // The _id of the current user will go in the request URL as a PARAMETER
         //                                        ^
-        fetch(`http://localhost:3001/user/${currentUser._id}`, settings)
-          .then(secondResponse => {
-            if (secondResponse.ok) {
-              return secondResponse.json();
-            } else {
-              switch(secondResponse.status) {
-                case 400:
-                  throw new Error("Error: album could not be added - please try again")
-                case 404:
-                  throw new Error("Error: user does not exist");
-                case 409:
-                  throw new Error("Error: you have already added this album")
-                default:
-                  throw new Error("Error: server error - please try again");
-              }
-            }
-          })
-          .then(secondReqData => {
+        fetch(apiUrl(`/user/${encodeURIComponent(currentUser._id)}`), settings)
+          .then(parseResponse)
+          .then((secondReqData) => {
             // Update the "currentUser" state variable
             setCurrentUser(secondReqData);
             // Reset the values of the inputs
@@ -184,30 +179,13 @@ const App = () => {
       headers: {
         "Content-Type": "application/json",
       },
-      credentials: "include"
+      credentials: "include",
     };
 
     //fetch(`${process.env.API_URL}/login`, settings)
-    fetch("http://localhost:3001/login", settings)
-      .then(response => {
-        // If we get back an error, "response.ok" will be false!
-        if (response.ok) {
-          return response.json();
-        } else {
-          // Throw a new error and go to the "catch" block
-          switch(response.status) {
-            // If we get a 401 error with a specific "message" property, put that value into an Error and throw it.
-            case 401:
-              return response.json().then(err => {
-                throw new Error(err.message);
-              })
-            default:
-              throw new Error("Error: server error - please try again");
-          }
-        }
-      })
+    fetch(apiUrl("/login"), settings)
+      .then(parseResponse)
       .then((data) => {
-        console.log("currentUser", data);
         // Update "currentUser" state variable
         setCurrentUser(data);
         setUsername("");
@@ -226,8 +204,8 @@ const App = () => {
   // Function to handle deleting ALL the current user's albums
   const deleteAllAlbums = () => {
     const user = {
-      _id: currentUser._id
-    }
+      _id: currentUser._id,
+    };
 
     const jsonUser = JSON.stringify(user);
 
@@ -235,36 +213,23 @@ const App = () => {
       method: "DELETE",
       body: jsonUser,
       headers: {
-        "Content-Type": "application/json"
+        "Content-Type": "application/json",
       },
       // Any time we want to send a cookie with a fetch() request
       // We need to set "credentials: 'include'"
-      credentials: "include"
-    }
+      credentials: "include",
+    };
 
     // Make a DELETE request to the "/albums" endpoint
-    fetch("http://localhost:3001/albums", settings)
-      .then(response => {
-        if (response.ok) {
-          return response.json();
-          // If the request was unsuccessful
-        } else {
-          // Check the status of the response
-          switch (response.status) {
-            case 404:
-              throw new Error("Error: User not found");
-            default:
-              throw new Error("Error: Unknown error");
-          }
-        }
-      })
-      .then(data => {
+    fetch(apiUrl("/albums"), settings)
+      .then(parseResponse)
+      .then((data) => {
         setCurrentUser(data);
       })
-      .catch(err => {
+      .catch((err) => {
         alert(err.message);
-      })
-  }
+      });
+  };
 
   // ===============================================================
 
@@ -277,7 +242,7 @@ const App = () => {
 
     // Create an object containing a "userId" property
     const deleteDetails = {
-      userId: currentUser._id // The current user's _id
+      userId: currentUser._id, // The current user's _id
     };
 
     const jsonDeleteDetails = JSON.stringify(deleteDetails);
@@ -286,32 +251,19 @@ const App = () => {
       method: "DELETE",
       body: jsonDeleteDetails,
       headers: {
-        "Content-Type": "application/json"
+        "Content-Type": "application/json",
       },
-      credentials: "include"
-    }
+      credentials: "include",
+    };
 
-    fetch(`http://localhost:3001/albums/${deletedAlbumId}`, settings)
-    .then(response => {
-      if (response.ok) {
-        return response.json()
-      } else {
-        switch(response.status) {
-          case 403:
-            throw new Error("Error: The action was forbidden - try again")
-          case 404:
-            throw new Error("Error: User not found")
-          default:
-            throw new Error("Error: Server error - try again")
-        }
-      }
-    })
-    .then(data => {
-      setCurrentUser(data);
-    })
-    .catch(e => {
-      alert(e.message);
-    });
+    fetch(apiUrl(`/albums/${encodeURIComponent(deletedAlbumId)}`), settings)
+      .then(parseResponse)
+      .then((data) => {
+        setCurrentUser(data);
+      })
+      .catch((e) => {
+        alert(e.message);
+      });
   };
 
   // ===============================================================
@@ -319,30 +271,20 @@ const App = () => {
   // Function to handle deleting the current user from the "users" collection
   const deleteUser = () => {
     const settings = {
-      method: "DELETE"
-    }
+      method: "DELETE",
+      credentials: "include",
+    };
 
-    fetch(`http://localhost:3001/user/${currentUser._id}`, settings)
-      .then(response => {
-        if (response.ok) {
-          return response.json()
-        } else {
-          switch (response.status) {
-            case 404:
-              throw new Error("Error: User not found");
-            default:
-              throw new Error("Error: Server error - please try again");
-          }
-        }
-      })
-      .then(data => {
+    fetch(apiUrl(`/user/${encodeURIComponent(currentUser._id)}`), settings)
+      .then(parseResponse)
+      .then((data) => {
         alert("Your account has been deleted!");
         setCurrentUser(data);
       })
-      .catch(err => {
+      .catch((err) => {
         alert(err.message);
-      })
-  }
+      });
+  };
 
   // Every time we update the "albums" state variable we will automatically re-render the app...
   // When this happens, map the new version of "albums"...
@@ -352,11 +294,12 @@ const App = () => {
     // 19/10 - New functionality: click the X to delete the album *from the DB*
     // When the app re-renders, the album will no longer be rendered
     return (
-      <li key={album._id} id={album._id}> {albumDetails} : <span onClick={deleteAlbum}>X</span></li>
+      <li key={album._id} id={album._id}>
+        {" "}
+        {albumDetails} : <span onClick={deleteAlbum}>X</span>
+      </li>
     );
   });
-
-  console.log("currentUser", currentUser);
 
   // Conditional rendering
   return (
@@ -368,11 +311,26 @@ const App = () => {
           <form onSubmit={submitLoginData}>
             <div>
               <label>Username</label>
-              <input name="username" onChange={changeData} value={username} />
+              <input
+                name="username"
+                onChange={changeData}
+                value={username}
+                autoComplete="username"
+                required
+                maxLength="100"
+              />
             </div>
             <div>
               <label>Password</label>
-              <input name="password" onChange={changeData} value={password} />
+              <input
+                type="password"
+                name="password"
+                onChange={changeData}
+                value={password}
+                autoComplete="current-password"
+                required
+                maxLength="128"
+              />
             </div>
 
             <button>Sign In</button>
@@ -389,15 +347,35 @@ const App = () => {
           <form onSubmit={submitForm}>
             <div>
               <label>Band</label>
-              <input name="band" onChange={changeData} value={band} />
+              <input
+                name="band"
+                onChange={changeData}
+                value={band}
+                required
+                maxLength="100"
+              />
             </div>
             <div>
               <label>Title</label>
-              <input name="title" onChange={changeData} value={title} />
+              <input
+                name="title"
+                onChange={changeData}
+                value={title}
+                required
+                maxLength="200"
+              />
             </div>
             <div>
               <label>Year</label>
-              <input name="year" onChange={changeData} value={year} />
+              <input
+                type="number"
+                name="year"
+                onChange={changeData}
+                value={year}
+                min="0"
+                max={new Date().getFullYear()}
+                required
+              />
             </div>
             <button>Submit Album</button>
           </form>
